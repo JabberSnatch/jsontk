@@ -1,11 +1,18 @@
 #include <cstring>
 #include <iostream>
 
+#include <string>
+#include <unordered_map>
+#include <variant>
+
 union YYSTYPE;
 
 struct ParseContext {
     char const* source;
     char const* next_char;
+
+    std::string next_value_key;
+    std::unordered_map<std::string, std::variant<int, char const*>> values;
 };
 
 void yyerror(ParseContext* context, char const* msg)

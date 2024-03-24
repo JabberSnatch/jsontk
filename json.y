@@ -3,12 +3,6 @@
 	   int number;
 }
 
-%{
-
-//int yylex(ParseContext* context);
-
-%}
-
 %parse-param {ParseContext* context}
 %lex-param {context}
 
@@ -53,21 +47,22 @@ values:
 	| value COMMA values
 	;
 
-tag:
-	QUOTE STRING QUOTE
+string:
+	QUOTE STRING QUOTE { context->values.emplace(context->next_value_key, std::variant<int, char const*>{ $2 }); }
 	;
 
 key:
-	tag
+	QUOTE STRING QUOTE  { context->next_value_key = std::string($2); }
 	;
 
 boolean:
 	TRUE
 	| FALSE
+	;
 
 value:
-	tag
-	| NUMBER
+	string
+	| NUMBER { context->values.emplace(context->next_value_key, std::variant<int, char const*>{ $1 }); }
 	| object
 	| array
 	| boolean
