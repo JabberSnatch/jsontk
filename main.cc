@@ -18,6 +18,9 @@ int yylex(YYSTYPE*, ParseContext* context);
 
 int yylex(YYSTYPE*, ParseContext* context)
 {
+    while(isspace((int)*context->next_char))
+        ++context->next_char;
+
     switch (*context->next_char)
     {
     case '\0': return YYEOF;
@@ -61,7 +64,7 @@ int yylex(YYSTYPE*, ParseContext* context)
 
 int main()
 {
-    char const* source = "{\"member\":0}";
+    char const* source = "{ \"member\" : 0 }";
     ParseContext context = {
         source,
         source
