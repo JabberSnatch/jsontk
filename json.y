@@ -1,6 +1,9 @@
 %union {
-	   char* string;
-	   int number;
+    struct {
+        char const* begin;
+        char const* end;
+    } string;
+    int number;
 }
 
 %parse-param {ParseContext* context}
@@ -48,11 +51,17 @@ values:
 	;
 
 string:
-	QUOTE STRING QUOTE { context->values.emplace(context->next_value_key, std::variant<int, char const*>{ $2 }); }
+	QUOTE STRING QUOTE {
+	    context->values.emplace(context->next_value_key,
+		    std::string{ $2.begin, (size_t)std::distance($2.begin, $2.end) }
+		);
+	}
 	;
 
 key:
-	QUOTE STRING QUOTE  { context->next_value_key = std::string($2); }
+	QUOTE STRING QUOTE {
+	    context->next_value_key = std::string($2.begin, std::distance($2.begin, $2.end));
+	}
 	;
 
 boolean:
@@ -62,7 +71,7 @@ boolean:
 
 value:
 	string
-	| NUMBER { context->values.emplace(context->next_value_key, std::variant<int, char const*>{ $1 }); }
+	| NUMBER { context->values.emplace(context->next_value_key, $1); }
 	| object
 	| array
 	| boolean
