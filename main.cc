@@ -199,17 +199,37 @@ void PrintJsonValue(JsonValue const& value, uint32_t depth)
     }, value);
 }
 
-int main()
+int main(int argc, char const** argv)
 {
-    char const* source = R"(
+    if (argc == 2)
+    {
+        std::FILE* file = std::fopen(argv[1], "r");
+        std::fseek(file, 0, SEEK_END);
+        uint64_t size = std::ftell(file);
+        std::fseek(file, 0, SEEK_SET);
+        std::string contents(size, '\0');
+        std::fread(contents.data(), 1, size, file);
+        std::fclose(file);
+
+        ParseContext context{ contents.c_str() };
+        yyparse(&context);
+        PrintJsonObject(context.ParseOutput(), 0);
+        return 0;
+    }
+    else
+    {
+
+        char const* source = R"(
 { "z":
 { "a": 0, "b": "muc"},
  "A" : 0, "B":null, "C" : "CO UCOU", "D": {},
 "E": [0 , 1, 2, 4, "coucou" ] }
     )";
-    ParseContext context{ source };
-    yyparse(&context);
-    JsonObject root = std::move(context.ParseOutput());
-    PrintJsonObject(root, 0);
-    return 0;
+
+        ParseContext context{ source };
+        yyparse(&context);
+        JsonObject root = std::move(context.ParseOutput());
+        PrintJsonObject(root, 0);
+        return 0;
+    }
 }
