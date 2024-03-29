@@ -7,14 +7,70 @@
 
 union YYSTYPE;
 
-using SemanticValue = std::variant<int, std::string>;
+
+struct JsonObject;
+struct JsonArray;
+
+using JsonObjectStorage = std::unique_ptr<JsonObject>;
+using JsonArrayStorage = std::unique_ptr<JsonArray>;
+using JsonValue =
+    std::variant<int, std::string, bool, JsonObjectStorage, JsonArrayStorage, nullptr_t>;
+
+struct JsonObject : public std::unordered_map<std::string, JsonValue>
+{};
+
+struct JsonArray : public std::vector<JsonValue>
+{};
 
 struct ParseContext {
+    ParseContext(char const* _source)
+        : source{ _source }
+        , next_char{ _source }
+        , next_key{ }
+        , next_value{ }
+        , key_stack{ }
+        , value_stack{ }
+    {}
+
+    JsonObject& ParseOutput() { return *std::get<JsonObjectStorage>(next_value); }
+
     char const* source;
     char const* next_char;
 
-    std::string next_value_key;
-    std::unordered_map<std::string, SemanticValue> values;
+    std::string next_key;
+    JsonValue next_value;
+
+    std::vector<std::string> key_stack;
+    std::vector<JsonValue> value_stack;
+
+    void PushObjectField()
+    {
+        JsonObject* object = std::get<JsonObjectStorage>(value_stack.back()).get();
+        object->emplace(next_key, std::move(next_value));
+    }
+
+    void PushArrayElement()
+    {
+        JsonArray* array = std::get<JsonArrayStorage>(value_stack.back()).get();
+        array->emplace_back(std::move(next_value));
+    }
+
+    void BeginObject() {
+        key_stack.push_back(next_key);
+        value_stack.emplace_back(std::make_unique<JsonObject>());
+    }
+
+    void BeginArray() {
+        key_stack.push_back(next_key);
+        value_stack.emplace_back(std::make_unique<JsonArray>());
+    }
+
+    void PopValue() {
+        next_key = std::move(key_stack.back());
+        key_stack.pop_back();
+        next_value = std::move(value_stack.back());
+        value_stack.pop_back();
+    }
 };
 
 void yyerror(ParseContext* context, char const* msg)
@@ -68,8 +124,7 @@ int yylex(YYSTYPE* yylval, ParseContext* context)
         }
 
         yylval->string.begin = context->next_char;
-        while (*++context->next_char != ' '
-               && *context->next_char != '"'
+        while (*++context->next_char != '"'
                && *context->next_char != '\0');
         yylval->string.end = context->next_char;
         return STRING;
@@ -77,13 +132,84 @@ int yylex(YYSTYPE* yylval, ParseContext* context)
     }
 }
 
+
+void PrintJsonValue(JsonValue const& value, uint32_t depth);
+
+void PrintDepth(uint32_t depth)
+{
+    for (uint32_t index = 0; index < depth; ++index)
+        std::cout << "\t";
+}
+
+void PrintJsonArray(JsonArray const& array, uint32_t depth)
+{
+    std::cout << "[" << std::endl;
+    for (auto it = array.begin(); it != array.end(); ++it)
+    {
+        JsonValue const& v = *it;
+        PrintDepth(depth+1);
+        PrintJsonValue(v, depth+1);
+        if (std::next(it) != array.end())
+            std::cout << ",";
+        std::cout << std::endl;
+    }
+
+    PrintDepth(depth);
+    std::cout << "]";
+}
+
+void PrintJsonObject(JsonObject const& object, uint32_t depth)
+{
+    std::cout << "{" << std::endl;
+    for (auto it = object.begin(); it != object.end(); ++it)
+    {
+        auto const& pair = *it;
+        PrintDepth(depth+1);
+        std::cout << "\"" << pair.first << "\": ";
+        PrintJsonValue(pair.second, depth+1);
+        if (std::next(it) != object.end())
+            std::cout << ",";
+        std::cout << std::endl;
+    }
+
+    PrintDepth(depth);
+    std::cout << "}";
+}
+
+void PrintJsonValue(JsonValue const& value, uint32_t depth)
+{
+    std::visit([depth](auto&& v){
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, int>
+                      || std::is_same_v<T, bool>) {
+            std::cout << v;
+        }
+        if constexpr (std::is_same_v<T, std::string>) {
+            std::cout << "\"" << v << "\"";
+        }
+        if constexpr (std::is_same_v<T, nullptr_t>) {
+            std::cout << "null";
+        }
+        if constexpr (std::is_same_v<T, JsonObjectStorage>) {
+            PrintJsonObject(*v, depth);
+        }
+        if constexpr (std::is_same_v<T, JsonArrayStorage>) {
+            PrintJsonArray(*v, depth);
+        }
+    }, value);
+}
+
 int main()
 {
-    char const* source = "{ \"A\" : 0, \"B\":1234, \"C\" : \"COUCOU\" }";
-    ParseContext context = {
-        source,
-        source
-    };
+    char const* source = R"(
+{ "z":
+{ "a": 0, "b": "muc"},
+ "A" : 0, "B":null, "C" : "CO UCOU", "D": {},
+"E": [0 , 1, 2, 4, "coucou" ] }
+    )";
+    ParseContext context{ source };
     yyparse(&context);
+    JsonObject root = std::move(context.ParseOutput());
+    PrintJsonObject(root, 0);
     return 0;
 }
